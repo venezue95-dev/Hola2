@@ -1,0 +1,13 @@
+{
+  "name": "UploadFreBot",
+  "description": "UploadFreBot es un bot simple,facil y rapido, destinado a la descarga y subida de contenido gratis en cuba.",
+  "repository": "https://github.com/SokyFre2/UploadFre", 
+  "env": {
+    "administrador": {
+      "description": "El Usuario DE Telegram Q Va A ADministrar El Bot"
+    },
+    "bot_token": {
+      "description": "El token del bot"
+    }
+  }
+}
