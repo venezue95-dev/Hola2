@@ -44,9 +44,13 @@ def main_menu_keyboard(is_admin=False):
     return InlineKeyboardMarkup(rows)
 
 def cancel_keyboard(task_id):
+    """Botones exclusivos del proceso activo/encolado.
+
+    La cola tiene su propia vista (/cola); no se muestra aquí para no mezclar
+    las acciones de cancelación con la navegación de la cola.
+    """
     return InlineKeyboardMarkup([
         [btn("❌ Cancelar proceso", f"cmd:/cancel_{task_id}")],
-        [btn("🚦 Ver cola", "cmd:/cola")],
     ])
 
 def result_keyboard():
