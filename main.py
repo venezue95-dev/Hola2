@@ -763,7 +763,7 @@ def uploadFile(filename,currentBits,totalBits,speed,time,args):
             update_process(thread.id, username, filename, '📤 Subiendo', currentBits, totalBits)
         
         tid_str = thread.id if thread else ''
-        uploadingInfo = infos.createUploading(filename, totalBits, currentBits, speed, time, originalfile, tid=tid_str)
+        uploadingInfo = infos.createUploading(filename, totalBits, currentBits, speed, time, originalfile, tid='')
         try:
             bot.editMessageText(message, uploadingInfo, parse_mode='html', reply_markup=cancel_keyboard(thread.id) if thread else None)
         except Exception as ex:
@@ -1037,8 +1037,7 @@ def processFile(update,bot,message,file,thread=None):
             phase = "particionado"
             compresingInfo = infos.createCompresing(file,file_size,max_file_size)
             if thread:
-                compresingInfo = compresingInfo.strip() + f"\n\n/cancel_{thread.id}"
-            bot.editMessageText(message, compresingInfo, parse_mode='html', reply_markup=cancel_keyboard(thread.id) if thread else None)
+                bot.editMessageText(message, compresingInfo, parse_mode='html', reply_markup=cancel_keyboard(thread.id) if thread else None)
             
             if thread:
                 if thread.getStore('stop'):
@@ -1809,7 +1808,7 @@ def show_updated_all_clouds(bot, message):
         bot.editMessageText(message, menu_msg, parse_mode='html', reply_markup=cloud_keyboard())
         
     except Exception as e:
-        bot.editMessageText(message, f'<b>❌ Error al mostrar nubes actualizadas:</b> <b>{str(e)}</b>', parse_mode='html')
+        bot.editMessageText(message, f'<b>❌ Error al mostrar nubes actualizadas:</b> <b>{str(e)}</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
 
 def show_loading_progress(bot, message, step, total_steps=3):
     progress_chars = ['○', '◔', '◑', '◕', '●']
@@ -1896,6 +1895,7 @@ def onmessage(update,bot:PyrogramBotClient):
             thread.store('expected_file_size', expected_size)
             thread.store('direct_upload_path', local_path)
             DIRECT_ACTIVE_THREADS[thread.id] = thread
+            direct_download_started = time.monotonic()
 
             # Reutiliza directamente el renderer de infos.py que usan las subidas a Moodle.
             def direct_download_progress(path, current, total, speed, elapsed, _args):
@@ -1904,8 +1904,8 @@ def onmessage(update,bot:PyrogramBotClient):
                     int(total or expected_size or 0),
                     int(current or 0),
                     int(speed or 0),
-                    float(elapsed or 0),
-                    tid=thread.id,
+                    max(0.0, time.monotonic() - direct_download_started),
+                    tid='',
                 )
                 try:
                     bot.editMessageText(
@@ -2526,7 +2526,7 @@ def onmessage(update,bot:PyrogramBotClient):
                 else:
                     bot.editMessageText(message, f'<b>❌ Error al conectar con la nube <code>{short_host}</code>.</b>', parse_mode='html')
             except Exception as e:
-                bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html')
+                bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
             return
 
         if username in CHANGING_CLOUD_USERS:
@@ -2924,7 +2924,7 @@ def onmessage(update,bot:PyrogramBotClient):
 🕐 <b>Hora Cuba:</b> <b>{format_cuba_datetime()}</b>
                     """
                 
-                bot.editMessageText(message, admin_msg, parse_mode='html')
+                bot.editMessageText(message, admin_msg, parse_mode='html', reply_markup=InlineKeyboardMarkup([[btn('🏠 Menú principal', 'cmd:/start')]]))
                 return
             
             elif '/adm_' in msgText:
@@ -3053,7 +3053,7 @@ def onmessage(update,bot:PyrogramBotClient):
                         bot.editMessageText(message, menu_msg, parse_mode='html')
                         
                     except Exception as e:
-                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html')
+                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                     return
                 
                 elif '/adm_cloud_' in msgText:
@@ -3129,7 +3129,7 @@ def onmessage(update,bot:PyrogramBotClient):
                         send_long_message(bot, message.chat.id, list_msg, original_message=message, parse_mode='html')
                         
                     except Exception as e:
-                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html')
+                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                     return
                 
                 elif '/adm_show_' in msgText:
@@ -3167,7 +3167,7 @@ def onmessage(update,bot:PyrogramBotClient):
                         else:
                             bot.editMessageText(message, '<b>❌ No se encontró la evidencia</b>', parse_mode='html')
                     except Exception as e:
-                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html')
+                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                     return
                 
                 elif '/adm_fetch_' in msgText:
@@ -3212,7 +3212,7 @@ def onmessage(update,bot:PyrogramBotClient):
                         else:
                             bot.editMessageText(message, '<b>❌ No hay archivos en esta evidencia</b>', parse_mode='html')
                     except Exception as e:
-                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html')
+                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                     return
                 
                 elif '/adm_delete_' in msgText:
@@ -3292,7 +3292,7 @@ def onmessage(update,bot:PyrogramBotClient):
                         else:
                             bot.editMessageText(message, f'<b>❌ Error al eliminar:</b> <b>{clean_name}</b>', parse_mode='html')
                     except Exception as e:
-                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html')
+                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                     return
                 
                 elif '/adm_wipe_' in msgText:
@@ -3340,7 +3340,7 @@ def onmessage(update,bot:PyrogramBotClient):
                         else:
                             bot.editMessageText(message, '<b>❌ No se encontró configuración</b>', parse_mode='html')
                     except Exception as e:
-                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html')
+                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                     return
                 
                 elif '/adm_nuke' in msgText:
@@ -3382,7 +3382,7 @@ def onmessage(update,bot:PyrogramBotClient):
                             final_msg += f"\n{result}"
                         bot.editMessageText(message, final_msg, parse_mode='html')
                     except Exception as e:
-                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html')
+                        bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                     return
                 
                 elif '/adm_logs' in msgText:
@@ -3600,7 +3600,7 @@ def onmessage(update,bot:PyrogramBotClient):
                             })
                     
                     if findex < 0 or findex >= len(visible_list):
-                        bot.editMessageText(message, '<b>❌ Índice inválido. Use </b>/files<b> para ver la lista.</b>', parse_mode='html')
+                        bot.editMessageText(message, '<b>❌ Índice inválido. Use </b>/files<b> para ver la lista.</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                         client.logout()
                         return
                     
@@ -3613,9 +3613,9 @@ def onmessage(update,bot:PyrogramBotClient):
                 else:
                     bot.editMessageText(message,'<b>⚠️ Error de conexión o cuenta inválida.</b>', parse_mode='html')
             except ValueError:
-                bot.editMessageText(message, '<b>❌ Formato incorrecto. Use:</b> /txt_0', parse_mode='html')
+                bot.editMessageText(message, '<b>❌ Formato incorrecto. Use:</b> /txt_0', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
             except Exception as e:
-                bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html')
+                bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
              
         elif '/del_' in msgText:
             try:
@@ -3640,7 +3640,7 @@ def onmessage(update,bot:PyrogramBotClient):
                             })
                     
                     if findex < 0 or findex >= len(visible_list):
-                        bot.editMessageText(message, '<b>❌ Índice inválido. Use </b>/files<b> para ver la lista.</b>', parse_mode='html')
+                        bot.editMessageText(message, '<b>❌ Índice inválido. Use </b>/files<b> para ver la lista.</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                         client.logout()
                         return
                     
@@ -3692,11 +3692,11 @@ def onmessage(update,bot:PyrogramBotClient):
                         confirmation_msg += "<b>📭 No hay evidencias disponibles</b>"
                         bot.editMessageText(message, confirmation_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                 else:
-                    bot.editMessageText(message,'<b>⚠️ Error al conectar con la nube.</b>', parse_mode='html')
+                    bot.editMessageText(message,'<b>⚠️ Error al conectar con la nube.</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
             except ValueError:
-                bot.editMessageText(message, '<b>❌ Formato incorrecto. Use:</b> /del_0', parse_mode='html')
+                bot.editMessageText(message, '<b>❌ Formato incorrecto. Use:</b> /del_0', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
             except Exception as e:
-                bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html')
+                bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(e)}</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                 
         elif '/delall' in msgText:
             try:
@@ -3751,7 +3751,7 @@ def onmessage(update,bot:PyrogramBotClient):
                     deletion_msg = f"🗑️ <b>Eliminación masiva completada</b>\n\n• <b>Evidencias eliminadas:</b> <b>{total_evidences}</b>\n• <b>Archivos borrados:</b> <b>{total_files}</b>\n\n<b>✅ ¡Todas tus evidencias han sido eliminadas!</b>"
                     bot.editMessageText(message, deletion_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                 else:
-                    bot.editMessageText(message,'<b>⚠️ Error al conectar con la cuenta.</b>', parse_mode='html')
+                    bot.editMessageText(message,'<b>⚠️ Error al conectar con la cuenta.</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
             except Exception as ex:
                 bot.editMessageText(message, f'<b>❌ Error:</b> <b>{str(ex)}</b>', parse_mode='html')
                 

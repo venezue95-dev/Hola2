@@ -46,6 +46,22 @@ def porcent(index, max):
     porcent_val = round(porcent_val)
     return porcent_val
 
+def format_remaining_time(totalBits, currentBits, time_val):
+    """Estima el tiempo restante usando la velocidad media desde el inicio."""
+    try:
+        total = float(totalBits or 0)
+        current = float(currentBits or 0)
+        elapsed = float(time_val or 0)
+        if total <= 0 or current <= 0 or elapsed <= 0 or current >= total:
+            return "calculando..." if current < total else "0:00"
+        average_speed = current / elapsed
+        if average_speed <= 0:
+            return "calculando..."
+        remaining = max(0, (total - current) / average_speed)
+        return str(datetime.timedelta(seconds=int(round(remaining))))
+    except Exception:
+        return "calculando..."
+
 def createDownloading(filename, totalBits, currentBits, speed, time_val, tid=''):
     msg = '<b>⬇️ Descargando archivo...</b>\n\n'
     msg += f'<b>📄 Nombre: {filename}</b>\n'
@@ -58,7 +74,7 @@ def createDownloading(filename, totalBits, currentBits, speed, time_val, tid='')
         msg += '<b>💾 Tamaño total: no indicado por el servidor</b>\n\n'
     msg += f'<b>📥 Descargado: {sizeof_fmt(currentBits)}</b>\n\n'
     msg += f'<b>⚡ Velocidad: {sizeof_fmt(speed)}/s</b>\n\n'
-    msg += f'<b>⏱️ Tiempo: {datetime.timedelta(seconds=int(time_val))}</b>\n\n'
+    msg += f'<b>⏱️ Tiempo restante: {format_remaining_time(totalBits, currentBits, time_val)}</b>\n\n'
 
     if tid != '':
         msg += f'/cancel_{tid}'
@@ -76,7 +92,7 @@ def createUploading(filename, totalBits, currentBits, speed, time_val, originaln
     msg += f'<b>💾 Tamaño total: {sizeof_fmt(totalBits)}</b>\n\n'
     msg += f'<b>📤 Subido: {sizeof_fmt(currentBits)}</b>\n\n'
     msg += f'<b>⚡ Velocidad: {sizeof_fmt(speed)}/s</b>\n\n'
-    msg += f'<b>⏱️ Tiempo: {datetime.timedelta(seconds=int(time_val))}</b>\n\n'
+    msg += f'<b>⏱️ Tiempo restante: {format_remaining_time(totalBits, currentBits, time_val)}</b>\n\n'
 
     if tid != '':
         msg += f'/cancel_{tid}'
