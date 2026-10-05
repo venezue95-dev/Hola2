@@ -1824,7 +1824,7 @@ def show_loading_progress(bot, message, step, total_steps=3):
 def onmessage(update,bot:PyrogramBotClient):
     global MAINTENANCE_MODE, BANNED_USERS, REMOVED_USERS, ACTIVE_PROCESSES, ACTIVE_STATUS_CHECKS, CHANGING_CLOUD_USERS
     try:
-        thread = bot.this_thread
+        thread = getattr(update, '_thread', None) or bot.this_thread
         username = update.message.sender.username
         chat_id = update.message.chat.id
 
@@ -3915,6 +3915,8 @@ def on_callback_query(callback_query, bot: PyrogramBotClient):
     update = bot.callbackUpdate(callback_query, command)
     # Ejecutamos el mismo flujo que los comandos escritos para evitar duplicar lógica.
     worker = BotThread(targetfunc=onmessage, args=(update, bot), update=update)
+    update._thread = worker
+    bot.this_thread = worker
     worker.start()
 
 def main():

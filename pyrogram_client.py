@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import threading
+import asyncio
 from types import SimpleNamespace
 from typing import Callable, Optional
 
@@ -93,6 +94,7 @@ class PyrogramBotClient:
             return
         update = UpdateCompat(message)
         self.this_thread = BotThread(targetfunc=self._callback, args=(update, self), update=update)
+        update._thread = self.this_thread
         self.this_thread.start()
 
     def run(self):
@@ -187,14 +189,30 @@ class PyrogramBotClient:
                     except OSError:
                         pass
 
-                def progress(current, total, _):
-                    if cancel_check and cancel_check():
-                        raise RuntimeError("Descarga cancelada por el usuario")
-                    if progressfunc:
-                        progressfunc(destname, current, total, 0, 0, args)
+                # Pyrogram's Client owns the asyncio loop created by app.run().
+                # The bot processes messages in worker threads, so invoking the
+                # sync download wrapper from those threads can leave the media
+                # transfer on the wrong event loop and, in practice, return only
+                # the first 1 MiB chunk. Schedule the complete stream on the
+                # client's real loop instead.
+                async def _stream_download():
+                    current = 0
+                    os.makedirs(os.path.dirname(os.path.abspath(destname)), exist_ok=True)
+                    with open(destname, "wb") as output:
+                        async for chunk in self.app.stream_media(message._message):
+                            if cancel_check and cancel_check():
+                                raise RuntimeError("Descarga cancelada por el usuario")
+                            output.write(chunk)
+                            current += len(chunk)
+                            if progressfunc:
+                                await self.app.loop.run_in_executor(
+                                    None, progressfunc, destname, current, expected_size, 0, 0, args
+                                )
+                    return current
 
-                result = message._message.download(file_name=destname, progress=progress)
-                path = result or destname
+                future = asyncio.run_coroutine_threadsafe(_stream_download(), self.app.loop)
+                received = future.result()
+                path = destname
                 if not path or not os.path.isfile(path):
                     raise IOError("Telegram no devolvió el archivo descargado")
 
