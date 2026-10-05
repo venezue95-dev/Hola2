@@ -22,16 +22,14 @@ import collections
 import re
 import html
 from dotenv import load_dotenv
+
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 load_dotenv()
 
 # ==============================
-# INTERFAZ INLINE DEL BOT
+# BOTONES INLINE
 # ==============================
-def inline_kb(rows):
-    return InlineKeyboardMarkup(rows)
-
 def btn(text, callback_data):
     return InlineKeyboardButton(text, callback_data=callback_data)
 
@@ -43,27 +41,30 @@ def main_menu_keyboard(is_admin=False):
     ]
     if is_admin:
         rows.append([btn("👑 Panel admin", "cmd:/admin")])
-    return inline_kb(rows)
+    return InlineKeyboardMarkup(rows)
 
 def cancel_keyboard(task_id):
-    return inline_kb([[btn("❌ Cancelar proceso", f"cmd:/cancel_{task_id}")],
-                      [btn("🚦 Ver cola", "cmd:/cola")]])
+    return InlineKeyboardMarkup([
+        [btn("❌ Cancelar proceso", f"cmd:/cancel_{task_id}")],
+        [btn("🚦 Ver cola", "cmd:/cola")],
+    ])
 
 def result_keyboard():
-    return inline_kb([
+    return InlineKeyboardMarkup([
         [btn("📁 Mis archivos", "cmd:/files"), btn("🚦 Mi cola", "cmd:/cola")],
         [btn("☁️ Cambiar nube", "cmd:/cambiar"), btn("📊 Estado", "cmd:/status")],
         [btn("🏠 Menú", "cmd:/start")],
     ])
 
 def cloud_keyboard():
-    rows = []
-    for i, c in enumerate(AVAILABLE_CLOUDS, 1):
-        short = c['moodle_host'].replace('https://', '').replace('http://', '').strip('/')
-        label = short if len(short) <= 28 else short[:25] + '...'
+    rows=[]
+    for i,c in enumerate(AVAILABLE_CLOUDS, 1):
+        short=c['moodle_host'].replace('https://','').replace('http://','').strip('/')
+        label=short if len(short)<=28 else short[:25]+'...'
         rows.append([btn(f"{i}. ☁️ {label}", f"cmd:/cambiar_{i}")])
     rows.append([btn("🏠 Volver", "cmd:/start")])
-    return inline_kb(rows)
+    return InlineKeyboardMarkup(rows)
+
 
 # ==============================
 # CONFIGURACIÓN DE LÍMITES DIARIOS
@@ -760,7 +761,7 @@ def uploadFile(filename,currentBits,totalBits,speed,time,args):
         tid_str = thread.id if thread else ''
         uploadingInfo = infos.createUploading(filename, totalBits, currentBits, speed, time, originalfile, tid=tid_str)
         try:
-            bot.editMessageText(message, uploadingInfo, parse_mode='html')
+            bot.editMessageText(message, uploadingInfo, parse_mode='html', reply_markup=cancel_keyboard(thread.id) if thread else None)
         except Exception as ex:
             print(f"Aviso: no se pudo actualizar el progreso de subida: {ex}")
     except StopUploadException:
@@ -1172,7 +1173,7 @@ def processFile(update,bot,message,file,thread=None):
 
             mensaje_final = finishInfo + '\n' + extra_msg + '\n' + filesInfo
             try:
-                bot.sendMessage(message.chat.id, mensaje_final, parse_mode='html', reply_markup=result_keyboard())
+                bot.sendMessage(message.chat.id, mensaje_final, parse_mode='html')
             except Exception as e:
                 print(f"Error enviando mensaje de finalización (probable HTML inválido en nombre/URL): {e}")
                 try:
@@ -1264,7 +1265,6 @@ def processFile(update,bot,message,file,thread=None):
     finally:
         if thread:
             clean_process(thread.id)
-            DIRECT_ACTIVE_THREADS.pop(thread.id, None)
 
 def ddl(update,bot,message,url,file_name='',thread=None):
     username = update.message.sender.username
@@ -1802,7 +1802,7 @@ def show_updated_all_clouds(bot, message):
 /adm_nuke - ⚠️ <b>Eliminación masiva</b>
         """
         
-        bot.editMessageText(message, menu_msg, parse_mode='html')
+        bot.editMessageText(message, menu_msg, parse_mode='html', reply_markup=cloud_keyboard())
         
     except Exception as e:
         bot.editMessageText(message, f'<b>❌ Error al mostrar nubes actualizadas:</b> <b>{str(e)}</b>', parse_mode='html')
@@ -1868,10 +1868,7 @@ def onmessage(update,bot:PyrogramBotClient):
             user_info['chat_id'] = chat_id
             USER_CLOUD_OVERRIDES[username.lower()] = user_info
 
-        # Pyrogram entrega documentos y vídeos como archivos reales. El
-        # cliente anterior solo examinaba texto, por lo que esos mensajes se
-        # ignoraban. Descargarlos primero permite usar el mismo flujo Moodle
-        # que ya procesa los enlaces externos.
+        # Archivos recibidos directamente desde Telegram.
         media = (
             getattr(update.message, 'document', None)
             or getattr(update.message, 'video', None)
@@ -1880,96 +1877,83 @@ def onmessage(update,bot:PyrogramBotClient):
         )
         if media:
             original_name = getattr(media, 'file_name', None) or f"archivo_{update.message.message_id}"
-            original_name = os.path.basename(str(original_name)).replace('/', '_').replace('\\\\', '_')
+            original_name = os.path.basename(str(original_name)).replace('/', '_').replace('\\', '_')
             upload_root = os.path.abspath(os.getenv('UPLOAD_DIR', '/app/data/uploads'))
             os.makedirs(upload_root, exist_ok=True)
             local_path = os.path.join(upload_root, f"{createID(12)}_{original_name}")
             expected_size = int(getattr(media, 'file_size', 0) or 0)
             expected_text = format_file_size(expected_size) if expected_size else 'tamaño no indicado'
+
             progress_message = bot.sendMessage(
-                chat_id,
-                f'<b>📥 Recibiendo archivo...</b>\n\n📄 <b>{html.escape(original_name)}</b>\n📦 <b>Tamaño informado por Telegram:</b> <b>{expected_text}</b>',
-                parse_mode='html',
-                reply_markup=cancel_keyboard(thread.id),
+                chat_id, '<b>📥 Recibiendo archivo...</b>', parse_mode='html',
+                reply_markup=cancel_keyboard(thread.id)
             )
             thread.store('msg', progress_message)
-
-            # Muestra el progreso real de la recepción y evita que el bot
-            # vuelva a procesar un archivo truncado sin avisar.
-            _download_ui = {'last': 0.0}
-            def direct_download_progress(path, current, total, *_args):
-                now = time.time()
-                if now - _download_ui['last'] < 1.5 and current < total:
-                    return
-                _download_ui['last'] = now
-                total = int(total or expected_size or 0)
-                current = int(current or 0)
-                pct = int((current / total) * 100) if total else 0
-                if pct > 100: pct = 100
-                bot.editMessageText(
-                    progress_message,
-                    f'<b>📥 Recibiendo archivo...</b>\n\n'
-                    f'📄 <b>{html.escape(original_name)}</b>\n'
-                    f'📊 <b>Progreso:</b> <b>{pct}%</b>\n'
-                    f'📥 <b>Recibido:</b> <b>{format_file_size(current)}</b> / <b>{format_file_size(total)}</b>',
-                    parse_mode='html',
-                    reply_markup=cancel_keyboard(thread.id),
-                )
-            DIRECT_ACTIVE_THREADS[thread.id] = thread
             thread.store('expected_file_size', expected_size)
             thread.store('direct_upload_path', local_path)
-            if expected_size:
+            DIRECT_ACTIVE_THREADS[thread.id] = thread
+
+            # Exactamente la misma barra de progreso usada para la subida a Moodle.
+            progress_state = {'started': time.time(), 'last_time': time.time(), 'last_bytes': 0}
+            def direct_download_progress(path, current, total, *_args):
+                now = time.time()
+                elapsed_delta = max(now - progress_state['last_time'], 0.001)
+                delta = max(int(current) - progress_state['last_bytes'], 0)
+                speed = delta / elapsed_delta
+                progress_state['last_time'] = now
+                progress_state['last_bytes'] = int(current)
+                total = int(total or expected_size or 0)
+                current = int(current or 0)
+                progress_info = infos.createUploading(
+                    original_name, total, current, speed,
+                    now - progress_state['started'], tid=thread.id
+                )
                 try:
-                    import shutil
-                    free_bytes = shutil.disk_usage(upload_root).free
-                    required_bytes = int(expected_size * 1.15)
-                    if free_bytes < required_bytes:
-                        bot.editMessageText(
-                            progress_message,
-                            f'<b>❌ No hay suficiente espacio temporal en Railway para recibir el archivo.</b>\n\n'
-                            f'📦 <b>Archivo:</b> {expected_text}\n'
-                            f'💽 <b>Espacio libre:</b> {format_file_size(free_bytes)}\n'
-                            f'💽 <b>Recomendado:</b> {format_file_size(required_bytes)}\n\n'
-                            f'💡 <i>Aumenta el almacenamiento del servicio/Volume de Railway y vuelve a intentarlo.</i>',
-                            parse_mode='html',
-                            reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()),
-                        )
-                        DIRECT_ACTIVE_THREADS.pop(thread.id, None)
-                        return
-                except Exception as disk_error:
-                    print(f'Aviso al comprobar espacio de disco: {disk_error}')
+                    bot.editMessageText(
+                        progress_message, progress_info, parse_mode='html',
+                        reply_markup=cancel_keyboard(thread.id)
+                    )
+                except Exception as exc:
+                    print(f"Aviso progreso archivo Telegram: {exc}")
+
             try:
                 downloaded_path = bot.downloadMessage(
                     update.message, local_path,
                     progressfunc=direct_download_progress,
-                    expected_size=expected_size,
-                    retries=3,
+                    expected_size=expected_size, retries=3,
                     cancel_check=lambda: bool(thread and thread.getStore('stop')),
                 )
             except Exception as download_error:
                 detail = html.escape(str(download_error))
                 if thread.getStore('stop'):
-                    bot.editMessageText(progress_message, '<b>⚠️ Descarga del archivo cancelada.</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
-                    DIRECT_ACTIVE_THREADS.pop(thread.id, None)
-                    return
-                bot.editMessageText(
-                    progress_message,
-                    f'<b>❌ No se pudo recibir el archivo completo.</b>\n\n📄 <b>{html.escape(original_name)}</b>\n📦 <b>Telegram informó:</b> <b>{expected_text}</b>\n⚠️ <b>Detalle:</b> <code>{detail}</code>\n\n💡 <i>El bot verificó el tamaño antes de procesarlo y no subirá un archivo incompleto.</i>',
-                    parse_mode='html',
-                    reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()),
-                )
+                    bot.editMessageText(progress_message, '<b>⚠️ Descarga del archivo cancelada.</b>', parse_mode='html',
+                                         reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
+                else:
+                    bot.editMessageText(
+                        progress_message,
+                        f'<b>❌ No se pudo recibir el archivo completo.</b>\n\n'
+                        f'📄 <b>{html.escape(original_name)}</b>\n'
+                        f'📦 <b>Telegram informó:</b> <b>{expected_text}</b>\n'
+                        f'⚠️ <b>Detalle:</b> <code>{detail}</code>',
+                        parse_mode='html',
+                        reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower())
+                    )
                 DIRECT_ACTIVE_THREADS.pop(thread.id, None)
+                try:
+                    if os.path.exists(local_path): os.unlink(local_path)
+                except OSError: pass
                 return
+
             if downloaded_path and os.path.isfile(downloaded_path):
                 actual_size = os.path.getsize(downloaded_path)
                 if expected_size and actual_size != expected_size:
                     bot.editMessageText(
                         progress_message,
-                        '<b>❌ El archivo recibido no coincide con el tamaño original.</b>\n\n'
+                        f'<b>❌ El archivo recibido no coincide con el tamaño original.</b>\n\n'
                         f'📦 <b>Esperado:</b> {format_file_size(expected_size)}\n'
                         f'📥 <b>Recibido:</b> {format_file_size(actual_size)}',
                         parse_mode='html',
-                        reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()),
+                        reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower())
                     )
                     try: os.unlink(downloaded_path)
                     except OSError: pass
@@ -1978,13 +1962,12 @@ def onmessage(update,bot:PyrogramBotClient):
                 bot.editMessageText(
                     progress_message,
                     f'<b>📥 Archivo recibido correctamente.</b>\n\n📄 <b>{html.escape(original_name)}</b>\n📦 <b>Tamaño verificado:</b> <b>{format_file_size(actual_size)}</b>\n\n<b>🚀 Iniciando procesamiento...</b>',
-                    parse_mode='html',
-                    reply_markup=cancel_keyboard(thread.id),
+                    parse_mode='html', reply_markup=cancel_keyboard(thread.id)
                 )
                 processFile(update, bot, progress_message, downloaded_path, thread=thread)
             else:
-                bot.editMessageText(progress_message, '<b>❌ No se pudo recibir el archivo.</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
-                DIRECT_ACTIVE_THREADS.pop(thread.id, None)
+                bot.editMessageText(progress_message, '<b>❌ No se pudo recibir el archivo.</b>', parse_mode='html',
+                                     reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
             return
 
         if '/cancel_' in msgText:
@@ -2000,11 +1983,7 @@ def onmessage(update,bot:PyrogramBotClient):
                         bot.sendMessage(chat_id, '<b>⚠️ Esta tarea ya no existe o ya finalizó.</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                         return
 
-                    if is_direct:
-                        owner_username = username
-                        is_admin_action = False
-                    else:
-                        is_admin_action = (username.lower() == ADMIN_USERNAME.lower() and owner_username.lower() != username.lower())
+                    is_admin_action = False if is_direct else (username.lower() == ADMIN_USERNAME.lower() and owner_username.lower() != username.lower())
 
                     proc_info = ACTIVE_PROCESSES.get(tid, {})
                     proc_action = proc_info.get('action', '')
@@ -2012,9 +1991,10 @@ def onmessage(update,bot:PyrogramBotClient):
                     cancel_result = 'active' if is_direct else queue_manager.cancel(owner_username, tid)
 
                     proc_user = proc_info.get('user', owner_username)
-                    proc_file = proc_info.get('file', target_task.filename if target_task else direct_thread.getStore('direct_upload_path') if direct_thread else 'Archivo directo')
+                    proc_file = proc_info.get('file', target_task.filename if target_task else (direct_thread.getStore('direct_upload_path') if direct_thread else 'Archivo directo'))
 
                     clean_process(tid)
+                    DIRECT_ACTIVE_THREADS.pop(tid, None)
 
                     if cancel_result == 'pending':
                         try:
@@ -2543,7 +2523,7 @@ def onmessage(update,bot:PyrogramBotClient):
                     else:
                         confirmation_msg += f"<b>📭 @{target_user} ya no tiene más evidencias en esta nube.</b>"
                     
-                    bot.editMessageText(message, confirmation_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
+                    bot.editMessageText(message, confirmation_msg, parse_mode='html')
                 else:
                     bot.editMessageText(message, f'<b>❌ Error al conectar con la nube <code>{short_host}</code>.</b>', parse_mode='html')
             except Exception as e:
@@ -2566,7 +2546,7 @@ def onmessage(update,bot:PyrogramBotClient):
                     USER_CLOUD_OVERRIDES[username.lower()] = selected_cloud.copy()
                     CHANGING_CLOUD_USERS.discard(username)
                     
-                    bot.editMessageText(message, f"<b>✅ ¡Nube cambiada exitosamente!</b>\n\n☁️ <b>Nueva nube:</b> <code>{short_name}</code>\n⚖️ <b>Límite:</b> <b>{selected_cloud['zips']} MB</b>", parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
+                    bot.editMessageText(message, f"<b>✅ ¡Nube cambiada exitosamente!</b>\n\n☁️ <b>Nueva nube:</b> <code>{short_name}</code>\n⚖️ <b>Límite:</b> <b>{selected_cloud['zips']} MB</b>", parse_mode='html')
                     
                     if LOG_GROUP_ID != 0 and username.lower() != ADMIN_USERNAME.lower():
                         try:
@@ -2600,7 +2580,7 @@ def onmessage(update,bot:PyrogramBotClient):
                         return
                     
                     USER_CLOUD_OVERRIDES[username.lower()] = selected_cloud.copy()
-                    bot.editMessageText(message, f"<b>✅ ¡Nube cambiada exitosamente!</b>\n\n☁️ <b>Nueva nube:</b> <code>{short_name}</code>\n⚖️ <b>Límite:</b> <b>{selected_cloud['zips']} MB</b>", parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
+                    bot.editMessageText(message, f"<b>✅ ¡Nube cambiada exitosamente!</b>\n\n☁️ <b>Nueva nube:</b> <code>{short_name}</code>\n⚖️ <b>Límite:</b> <b>{selected_cloud['zips']} MB</b>", parse_mode='html')
                     
                     if LOG_GROUP_ID != 0 and username.lower() != ADMIN_USERNAME.lower():
                         try:
@@ -2621,7 +2601,7 @@ def onmessage(update,bot:PyrogramBotClient):
             menu_msg += f"💡 <b>Envía solo el número</b> (1 al {len(AVAILABLE_CLOUDS)})."
             
             CHANGING_CLOUD_USERS.add(username)
-            bot.editMessageText(message, menu_msg, parse_mode='html', reply_markup=cloud_keyboard())
+            bot.editMessageText(message, menu_msg, parse_mode='html')
             return
 
         if '/start' in msgText:
@@ -2729,7 +2709,7 @@ def onmessage(update,bot:PyrogramBotClient):
                         status_msg = f"☁️ <code>{clean_url}</code>\n<b>Estado:</b> <b>{icon}</b>"
                         
                         if idx == 0:
-                            bot.editMessageText(message, status_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
+                            bot.editMessageText(message, status_msg, parse_mode='html')
                         else:
                             time.sleep(0.4)
                             bot.sendMessage(chat_id, status_msg, parse_mode='html')
@@ -2739,7 +2719,7 @@ def onmessage(update,bot:PyrogramBotClient):
                     icon = "🟢 En línea" if s['online'] else "🔴 Fuera de línea"
                     clean_url = user_info["moodle_host"].replace('https://', '').replace('http://', '').strip('/')
                     status_msg = f"☁️ <code>{clean_url}</code>\n<b>Estado:</b> <b>{icon}</b>"
-                    bot.editMessageText(message, status_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
+                    bot.editMessageText(message, status_msg, parse_mode='html')
             except Exception as e:
                 bot.editMessageText(message, f"<b>❌ Error al comprobar el estado de la nube:</b> <b>{str(e)}</b>", parse_mode='html')
             finally:
@@ -3533,7 +3513,7 @@ def onmessage(update,bot:PyrogramBotClient):
 
 ℹ️ <b>Aún no tienes actividad registrada.</b>
                 """
-            bot.editMessageText(message, stats_msg, parse_mode='html', reply_markup=inline_kb([[btn('📁 Mis archivos', 'cmd:/files'), btn('🚦 Mi cola', 'cmd:/cola')], [btn('☁️ Cambiar nube', 'cmd:/cambiar'), btn('🏠 Menú', 'cmd:/start')]]))
+            bot.editMessageText(message, stats_msg, parse_mode='html')
             return
 
         elif msgText == '/cola' or msgText == '/colas':
@@ -3555,7 +3535,7 @@ def onmessage(update,bot:PyrogramBotClient):
             else:
                 cola_msg += "✅ <b>No tienes más enlaces esperando.</b>"
 
-            bot.editMessageText(message, cola_msg, parse_mode='html', reply_markup=inline_kb([[btn('🔄 Actualizar', 'cmd:/cola'), btn('🏠 Menú', 'cmd:/start')]]))
+            bot.editMessageText(message, cola_msg, parse_mode='html')
             return
         
         elif '/files' == msgText:
@@ -3588,13 +3568,10 @@ def onmessage(update,bot:PyrogramBotClient):
                 
                 if len(visible_list) > 0:
                     files_msg = "📁 <b>Tus evidencias</b>\n\n"
-                    rows = []
                     for idx, item in enumerate(visible_list):
-                        files_msg += f"• <b>{html.escape(str(item['name']))}</b> [ <b>{item['file_count']}</b> ]\n\n"
-                        rows.append([btn(f"📄 TXT {idx + 1}", f"cmd:/txt_{idx}"), btn(f"🗑️ Borrar {idx + 1}", f"cmd:/del_{idx}")])
+                        files_msg += f"• <b>{item['name']}</b> [ <b>{item['file_count']}</b> ]\n  /txt_{idx} | /del_{idx}\n\n"
                     files_msg += f"<b>Total:</b> <b>{len(visible_list)} evidencia(s)</b>"
-                    rows.append([btn("🏠 Menú", "cmd:/start"), btn("☁️ Cambiar nube", "cmd:/cambiar")])
-                    bot.editMessageText(message, files_msg, parse_mode='html', reply_markup=inline_kb(rows))
+                    bot.editMessageText(message, files_msg, parse_mode='html')
                 else:
                     bot.editMessageText(message, '<b>📭 No hay evidencias disponibles</b>', parse_mode='html')
                 client.logout()
@@ -3633,7 +3610,7 @@ def onmessage(update,bot:PyrogramBotClient):
                     txtname = clean_name + '.txt'
                     sendTxt(txtname, evindex['files'], update, bot, user_info=user_info)
                     client.logout()
-                    bot.editMessageText(message,'<b>📄 TXT enviado con éxito.</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
+                    bot.editMessageText(message,'<b>📄 TXT enviado con éxito.</b>', parse_mode='html')
                 else:
                     bot.editMessageText(message,'<b>⚠️ Error de conexión o cuenta inválida.</b>', parse_mode='html')
             except ValueError:
@@ -3897,27 +3874,20 @@ def onmessage(update,bot:PyrogramBotClient):
         print(f"Error general onmessage: {str(ex)}")
         print(traceback.format_exc())
 
+
 def on_callback_query(callback_query, bot: PyrogramBotClient):
-    """Maneja todos los botones inline usando el mismo motor de comandos del bot."""
     data = str(getattr(callback_query, 'data', '') or '')
     if not data.startswith('cmd:'):
         bot.answerCallbackQuery(callback_query)
         return
-
-    command = data[4:].strip()
     user = getattr(callback_query, 'from_user', None)
-    username = getattr(user, 'username', None) or ''
-    if not username:
+    if not getattr(user, 'username', None):
         bot.answerCallbackQuery(callback_query, 'Necesitas tener un @usuario de Telegram para usar estos botones.', show_alert=True)
         return
-
     bot.answerCallbackQuery(callback_query)
-    update = bot.callbackUpdate(callback_query, command)
-    # Ejecutamos el mismo flujo que los comandos escritos para evitar duplicar lógica.
-    worker = BotThread(targetfunc=onmessage, args=(update, bot), update=update)
-    update._thread = worker
-    bot.this_thread = worker
-    worker.start()
+    update = bot.callbackUpdate(callback_query, data[4:].strip())
+    update._thread = getattr(callback_query, '_thread', None) or bot.this_thread
+    onmessage(update, bot)
 
 def main():
     bot = PyrogramBotClient(BOT_TOKEN)

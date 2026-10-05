@@ -18,7 +18,7 @@ RUN python -m pip install --upgrade pip \
 COPY . .
 
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser \
-    && mkdir -p /app/data /app/data/telegram /app/data/uploads /app/server \
+    && mkdir -p /app/data /app/data/telegram /app/server \
     && chown -R appuser:appuser /app
 
 USER appuser

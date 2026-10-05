@@ -61,6 +61,7 @@ class PyrogramBotClient:
 
         self.this_thread: Optional[BotThread] = None
         self._callback: Optional[Callable] = None
+        self._callback_query: Optional[Callable] = None
         workdir = os.path.abspath(os.getenv("TELEGRAM_WORKDIR", "/app/data/telegram"))
         os.makedirs(workdir, exist_ok=True)
         self.app = Client(
@@ -76,18 +77,17 @@ class PyrogramBotClient:
         self.app.add_handler(MessageHandler(self._on_message, filters.all))
 
     def onCallback(self, func: Callable):
-        """Registra callbacks de botones inline y los entrega al bot con el mismo contexto de usuario."""
         self._callback_query = func
         self.app.add_handler(CallbackQueryHandler(self._on_callback))
 
     def _on_callback(self, _client, callback_query):
-        callback = getattr(self, "_callback_query", None)
-        if not callback:
+        if not self._callback_query:
             return
-        try:
-            callback(callback_query, self)
-        except Exception as exc:
-            print(f"Error en callback inline: {exc}")
+        # El callback corre fuera del asyncio loop para que las APIs síncronas
+        # de Pyrogram puedan utilizarse sin bloquear el propio loop.
+        self.this_thread = BotThread(targetfunc=self._callback_query, args=(callback_query, self))
+        callback_query._thread = self.this_thread
+        self.this_thread.start()
 
     def _on_message(self, _client, message):
         if not self._callback:
@@ -143,29 +143,19 @@ class PyrogramBotClient:
 
     def answerCallbackQuery(self, callback_query, text=None, show_alert=False):
         try:
-            return self.app.answer_callback_query(
-                callback_query.id, text=text, show_alert=show_alert
-            )
+            return self.app.answer_callback_query(callback_query.id, text=text, show_alert=show_alert)
         except Exception as exc:
             print(f"Aviso answerCallbackQuery: {exc}")
             return None
 
     @staticmethod
     def callbackUpdate(callback_query, text):
-        """Convierte un botón inline en una actualización mínima compatible con main.py."""
         msg = callback_query.message
         user = callback_query.from_user
-        return SimpleNamespace(
-            message=SimpleNamespace(
-                sender=user,
-                from_user=user,
-                chat=msg.chat,
-                message_id=msg.id,
-                text=text,
-                caption=None,
-                _message=msg,
-            )
-        )
+        return SimpleNamespace(message=SimpleNamespace(
+            sender=user, from_user=user, chat=msg.chat, message_id=msg.id,
+            text=text, caption=None, _message=msg
+        ))
 
     def deleteMessage(self, chat_id, msg_id):
         return self.app.delete_messages(chat_id, msg_id)
@@ -176,71 +166,48 @@ class PyrogramBotClient:
         return self.app.send_document(chat_id, file)
 
     def downloadMessage(self, message, destname, progressfunc=None, args=None, expected_size=0, retries=3, cancel_check=None):
-        """Descarga un archivo de Telegram y verifica que coincida con el tamaño anunciado."""
+        """Descarga el archivo completo en el loop real de Pyrogram y valida su tamaño."""
         last_error = None
         expected_size = int(expected_size or 0)
-
         for attempt in range(1, max(1, retries) + 1):
             try:
-                if attempt > 1:
-                    try:
-                        if os.path.exists(destname):
-                            os.remove(destname)
-                    except OSError:
-                        pass
+                if attempt > 1 and os.path.exists(destname):
+                    try: os.remove(destname)
+                    except OSError: pass
 
-                # Pyrogram's Client owns the asyncio loop created by app.run().
-                # The bot processes messages in worker threads, so invoking the
-                # sync download wrapper from those threads can leave the media
-                # transfer on the wrong event loop and, in practice, return only
-                # the first 1 MiB chunk. Schedule the complete stream on the
-                # client's real loop instead.
                 async def _stream_download():
                     current = 0
                     os.makedirs(os.path.dirname(os.path.abspath(destname)), exist_ok=True)
-                    with open(destname, "wb") as output:
+                    with open(destname, 'wb') as output:
                         async for chunk in self.app.stream_media(message._message):
                             if cancel_check and cancel_check():
-                                raise RuntimeError("Descarga cancelada por el usuario")
+                                raise RuntimeError('Descarga cancelada por el usuario')
                             output.write(chunk)
                             current += len(chunk)
                             if progressfunc:
-                                await self.app.loop.run_in_executor(
-                                    None, progressfunc, destname, current, expected_size, 0, 0, args
-                                )
+                                await self.app.loop.run_in_executor(None, progressfunc, destname, current, expected_size, 0, 0, args)
                     return current
 
                 future = asyncio.run_coroutine_threadsafe(_stream_download(), self.app.loop)
-                received = future.result()
-                path = destname
-                if not path or not os.path.isfile(path):
-                    raise IOError("Telegram no devolvió el archivo descargado")
-
-                actual_size = os.path.getsize(path)
+                future.result()
+                if not os.path.isfile(destname):
+                    raise IOError('Telegram no devolvió el archivo descargado')
+                actual_size = os.path.getsize(destname)
                 if expected_size > 0 and actual_size != expected_size:
-                    raise IOError(
-                        f"Descarga incompleta: Telegram indicó {expected_size} bytes, "
-                        f"pero se recibieron {actual_size} bytes"
-                    )
+                    raise IOError(f'Descarga incompleta: Telegram indicó {expected_size} bytes, pero se recibieron {actual_size} bytes')
                 if actual_size <= 0:
-                    raise IOError("El archivo descargado está vacío")
-                return path
+                    raise IOError('El archivo descargado está vacío')
+                return destname
             except Exception as exc:
                 last_error = exc
-                if cancel_check and cancel_check():
-                    print("Descarga directa Telegram cancelada por el usuario")
-                    break
-                print(f"Descarga directa Telegram: intento {attempt}/{retries} falló: {exc}")
+                if cancel_check and cancel_check(): break
+                print(f'Descarga directa Telegram: intento {attempt}/{retries} falló: {exc}')
                 if attempt < retries:
-                    import time
-                    time.sleep(2)
-
+                    import time; time.sleep(2)
         try:
-            if os.path.exists(destname):
-                os.remove(destname)
-        except OSError:
-            pass
-        raise last_error or IOError("No se pudo descargar el archivo de Telegram")
+            if os.path.exists(destname): os.remove(destname)
+        except OSError: pass
+        raise last_error or IOError('No se pudo descargar el archivo de Telegram')
 
     def getFile(self, file_id):
         return self.app.get_file(file_id)
