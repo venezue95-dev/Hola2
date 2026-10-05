@@ -24,6 +24,8 @@ class Downloader:
         self.max_retries = max(1, max_retries)
         self.max_bytes = int(os.getenv("MAX_DOWNLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
         self.id = createID(12)
+        self.last_error = ""
+        self.expected_size = 0
         self.url = ""
         self.progressfunc = None
         self.args = None
@@ -43,10 +45,13 @@ class Downloader:
         self.progressfunc = progressfunc
         self.args = args
         self.stoping = False
+        self.last_error = ""
+        self.expected_size = 0
 
         try:
             self.url = validate_public_url(self.url)
-        except UrlPolicyError:
+        except UrlPolicyError as exc:
+            self.last_error = str(exc)
             return None
         parsed = urlparse(self.url)
 
@@ -56,25 +61,34 @@ class Downloader:
             if host == "youtube.com" or host.endswith(".youtube.com") or host == "youtu.be":
                 data = youtube.getVideoData(self.url)
                 if not data:
+                    self.last_error = getattr(youtube, "LAST_ERROR", "") or "yt-dlp no pudo resolver el enlace multimedia"
                     return None
                 resolved_url = data["url"]
                 self.filename = _safe_filename(data.get("name") or "video")
+                self.expected_size = int(data.get("filesize") or 0)
+                for key in ("User-Agent", "Referer", "Origin", "Accept-Language"):
+                    value = (data.get("headers") or {}).get(key)
+                    if value:
+                        self.session.headers[key] = value
             elif host == "mediafire.com" or host.endswith(".mediafire.com"):
                 resolved_url = mediafire.get(self.url)
             elif host == "drive.google.com" or host.endswith(".drive.google.com") or host == "docs.google.com":
                 info = googledrive.get_info(self.url)
                 resolved_url = info["file_url"]
                 self.filename = _safe_filename(info.get("file_name") or "archivo")
-        except Exception:
+        except Exception as exc:
+            self.last_error = f"no se pudo resolver el enlace: {exc}"
             return None
 
         try:
             validate_public_url(resolved_url)
-        except UrlPolicyError:
+        except UrlPolicyError as exc:
+            self.last_error = str(exc)
             return None
 
         for attempt in range(self.max_retries):
             if self.stoping:
+                self.last_error = "descarga cancelada"
                 return None
             try:
                 response = self._get_with_safe_redirects(resolved_url)
@@ -82,10 +96,12 @@ class Downloader:
                     response.close()
                     raise requests.HTTPError(f"HTTP {response.status_code}")
                 if not response.ok:
+                    self.last_error = f"HTTP {response.status_code} al descargar la fuente"
                     response.close()
                     return None
                 return self._process_download(response.url, response, progressfunc, args)
-            except (requests.RequestException, OSError):
+            except (requests.RequestException, OSError) as exc:
+                self.last_error = str(exc) or exc.__class__.__name__
                 if attempt + 1 >= self.max_retries:
                     return None
                 time.sleep(min(2 ** attempt, 8))
@@ -115,8 +131,9 @@ class Downloader:
         filename = self.filename or _safe_filename(get_url_file_name(url, response) or "archivo_descargado")
         self.filename = filename
         destination = os.path.join(self.destpath, filename)
-        total = req_file_size(response)
+        total = req_file_size(response) or self.expected_size
         if total > self.max_bytes:
+            self.last_error = "El archivo supera MAX_DOWNLOAD_BYTES"
             response.close()
             return None
         downloaded = 0
@@ -128,13 +145,15 @@ class Downloader:
             with response, open(destination, "wb") as output:
                 for chunk in response.iter_content(chunk_size=1024 * 1024):
                     if self.stoping:
+                        self.last_error = "descarga cancelada"
                         return None
                     if not chunk:
                         continue
                     output.write(chunk)
                     downloaded += len(chunk)
                     if downloaded > self.max_bytes:
-                        raise OSError("El archivo supera MAX_DOWNLOAD_BYTES")
+                        self.last_error = "El archivo supera MAX_DOWNLOAD_BYTES"
+                        raise OSError(self.last_error)
                     now = time.monotonic()
                     if progressfunc and (now - last_report >= 0.8 or (total and downloaded >= total)):
                         elapsed = max(now - started, 0.001)
@@ -143,9 +162,15 @@ class Downloader:
                         progressfunc(self, filename, downloaded, total, speed, remaining, args)
                         last_report = now
                         last_bytes = downloaded
+                if progressfunc and downloaded and last_bytes != downloaded:
+                    elapsed = max(time.monotonic() - started, 0.001)
+                    speed = int(downloaded / elapsed)
+                    remaining = max((total - downloaded) / max(downloaded / elapsed, 1), 0) if total else 0
+                    progressfunc(self, filename, downloaded, total, speed, remaining, args)
                 output.flush()
             return destination
-        except Exception:
+        except Exception as exc:
+            self.last_error = str(exc) or exc.__class__.__name__
             try:
                 os.remove(destination)
             except OSError:
@@ -166,5 +191,4 @@ def _safe_filename(value: str) -> str:
     value = value.strip(" .") or "archivo_descargado"
     if value in {".", ".."}:
         value = "archivo_descargado"
-    # Conserva extensión y normaliza solo nombres problemáticos.
     return slugify(value, allow_unicode=True) if not re.fullmatch(r"[\w .()\-]+", value, re.UNICODE) else value
