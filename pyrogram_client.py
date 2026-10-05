@@ -59,16 +59,12 @@ class PyrogramBotClient:
 
         self.this_thread: Optional[BotThread] = None
         self._callback: Optional[Callable] = None
-        # Pyrogram no crea la carpeta de la sesión; sin ella SQLite falla con
-        # "unable to open database file".
-        workdir = os.path.abspath(os.getenv("TELEGRAM_WORKDIR", ".telegram_session"))
-        os.makedirs(workdir, exist_ok=True)
         self.app = Client(
             os.getenv("TELEGRAM_SESSION_NAME", "upload_et_bot"),
             api_id=api_id,
             api_hash=api_hash,
             bot_token=token,
-            workdir=workdir,
+            workdir=os.getenv("TELEGRAM_WORKDIR", ".telegram_session"),
         )
 
     def onMessage(self, func: Callable):
@@ -94,23 +90,19 @@ class PyrogramBotClient:
         return enums.ParseMode.DISABLED
 
     def sendMessage(self, chat_id=0, text="", parse_mode=""):
-        sent = self.app.send_message(
+        return self.app.send_message(
             chat_id,
             text,
             parse_mode=self._parse_mode(parse_mode),
             disable_web_page_preview=True,
         )
-        # Pyrogram 2.x usa message.id (ya no existe message_id); main.py usa
-        # message.message_id, así que se devuelve el objeto compatible.
-        return MessageCompat(sent) if sent is not None else None
 
     def editMessageText(self, message, text="", parse_mode=""):
         if not message:
             return None
-        msg_id = getattr(message, "message_id", None) or getattr(message, "id", None)
         return self.app.edit_message_text(
             message.chat.id,
-            msg_id,
+            message.message_id,
             text,
             parse_mode=self._parse_mode(parse_mode),
             disable_web_page_preview=True,

@@ -127,8 +127,3 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-
-# Sesión de Pyrogram
-.telegram_session/
-*.session
-*.session-journal

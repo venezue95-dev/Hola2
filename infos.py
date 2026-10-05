@@ -49,9 +49,13 @@ def porcent(index, max):
 def createDownloading(filename, totalBits, currentBits, speed, time_val, tid=''):
     msg = '<b>⬇️ Descargando archivo...</b>\n\n'
     msg += f'<b>📄 Nombre: {filename}</b>\n'
-    msg += f'<b>{text_progres(currentBits, totalBits)}</b>\n'
-    msg += f'<b>📊 Porcentaje: {porcent(currentBits, totalBits)}%</b>\n\n'
-    msg += f'<b>💾 Tamaño total: {sizeof_fmt(totalBits)}</b>\n\n'
+    if totalBits and totalBits > 0:
+        msg += f'<b>{text_progres(currentBits, totalBits)}</b>\n'
+        msg += f'<b>📊 Porcentaje: {porcent(currentBits, totalBits)}%</b>\n\n'
+        msg += f'<b>💾 Tamaño total: {sizeof_fmt(totalBits)}</b>\n\n'
+    else:
+        msg += '<b>📊 Porcentaje: calculando...</b>\n\n'
+        msg += '<b>💾 Tamaño total: no indicado por el servidor</b>\n\n'
     msg += f'<b>📥 Descargado: {sizeof_fmt(currentBits)}</b>\n\n'
     msg += f'<b>⚡ Velocidad: {sizeof_fmt(speed)}/s</b>\n\n'
     msg += f'<b>⏱️ Tiempo: {datetime.timedelta(seconds=int(time_val))}</b>\n\n'

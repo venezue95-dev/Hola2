@@ -20,6 +20,7 @@ import threading
 import json
 import collections
 import re
+import html
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -1271,10 +1272,15 @@ def ddl(update,bot,message,url,file_name='',thread=None):
             if file:
                 processFile(update,bot,message,file,thread=thread)
             else:
+                detail = downloader.last_error or "la fuente no respondió con un archivo descargable"
+                error_text = (
+                    "<b>❌ Error en la descarga.</b>\n\n"
+                    f"<b>⚠️ Detalle:</b> <code>{html.escape(detail)}</code>"
+                )
                 try:
-                    bot.editMessageText(message,'<b>❌ Error en la descarga.</b>', parse_mode='html')
+                    bot.editMessageText(message, error_text, parse_mode='html')
                 except:
-                    bot.editMessageText(message,'<b>❌ Error en la descarga.</b>', parse_mode='html')
+                    bot.editMessageText(message, error_text, parse_mode='html')
     except Exception as ex:
         if thread and thread.getStore('stop'):
             if not thread.getStore('cancelled'):
@@ -3742,8 +3748,5 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except Exception:
-        print("=== PRIMER ERROR AL ARRANCAR ===", flush=True)
-        traceback.print_exc()
-        time.sleep(15)
+    except:
         main()
