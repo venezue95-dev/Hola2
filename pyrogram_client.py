@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from typing import Callable, Optional
 
 from pyrogram import Client, enums, filters
+from pyrogram.errors import MessageNotModified
 from pyrogram.handlers import MessageHandler
 
 from thread_context import BotThread
@@ -92,23 +93,31 @@ class PyrogramBotClient:
         return enums.ParseMode.DISABLED
 
     def sendMessage(self, chat_id=0, text="", parse_mode=""):
-        return self.app.send_message(
+        # Pyrogram 2 identifica el mensaje con `.id`; main.py usa `.message_id`.
+        # MessageCompat expone ambos, así editMessageText/deleteMessage funcionan.
+        sent = self.app.send_message(
             chat_id,
             text,
             parse_mode=self._parse_mode(parse_mode),
             disable_web_page_preview=True,
         )
+        return MessageCompat(sent)
 
     def editMessageText(self, message, text="", parse_mode=""):
         if not message:
             return None
-        return self.app.edit_message_text(
-            message.chat.id,
-            message.message_id,
-            text,
-            parse_mode=self._parse_mode(parse_mode),
-            disable_web_page_preview=True,
-        )
+        message_id = getattr(message, "message_id", None) or message.id
+        try:
+            return self.app.edit_message_text(
+                message.chat.id,
+                message_id,
+                text,
+                parse_mode=self._parse_mode(parse_mode),
+                disable_web_page_preview=True,
+            )
+        except MessageNotModified:
+            # El texto es idéntico al actual (pasa en las barras de progreso).
+            return None
 
     def deleteMessage(self, chat_id, msg_id):
         return self.app.delete_messages(chat_id, msg_id)
