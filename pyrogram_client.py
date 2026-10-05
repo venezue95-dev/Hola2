@@ -59,12 +59,14 @@ class PyrogramBotClient:
 
         self.this_thread: Optional[BotThread] = None
         self._callback: Optional[Callable] = None
+        workdir = os.path.abspath(os.getenv("TELEGRAM_WORKDIR", "/app/data/telegram"))
+        os.makedirs(workdir, exist_ok=True)
         self.app = Client(
             os.getenv("TELEGRAM_SESSION_NAME", "upload_et_bot"),
             api_id=api_id,
             api_hash=api_hash,
             bot_token=token,
-            workdir=os.getenv("TELEGRAM_WORKDIR", ".telegram_session"),
+            workdir=workdir,
         )
 
     def onMessage(self, func: Callable):
