@@ -94,19 +94,23 @@ class PyrogramBotClient:
         return enums.ParseMode.DISABLED
 
     def sendMessage(self, chat_id=0, text="", parse_mode=""):
-        return self.app.send_message(
+        sent = self.app.send_message(
             chat_id,
             text,
             parse_mode=self._parse_mode(parse_mode),
             disable_web_page_preview=True,
         )
+        # Pyrogram 2.x usa message.id (ya no existe message_id); main.py usa
+        # message.message_id, así que se devuelve el objeto compatible.
+        return MessageCompat(sent) if sent is not None else None
 
     def editMessageText(self, message, text="", parse_mode=""):
         if not message:
             return None
+        msg_id = getattr(message, "message_id", None) or getattr(message, "id", None)
         return self.app.edit_message_text(
             message.chat.id,
-            message.message_id,
+            msg_id,
             text,
             parse_mode=self._parse_mode(parse_mode),
             disable_web_page_preview=True,
