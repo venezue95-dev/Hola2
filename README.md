@@ -85,3 +85,20 @@ No se habilitan cookies, contraseñas, CAPTCHA, DRM, paywalls, torrents ni
 proxies de evasión. Las herramientas como gallery-dl, Streamlink, aria2,
 Megatools, rclone y JDownloader deben instalarse y auditarse como adaptadores
 separados; no se ejecutan automáticamente desde una URL del usuario.
+
+### Railway: archivos enviados directamente por Telegram
+
+Los archivos directos se reciben temporalmente en `/app/data/uploads`. Antes de
+procesarlos, el bot compara el tamaño anunciado por Telegram con el tamaño real
+recibido y reintenta la descarga si está incompleta. Si Railway no tiene espacio
+suficiente, el bot lo informa en lugar de procesar un archivo truncado.
+
+Para producción se recomienda asignar almacenamiento suficiente al servicio o
+un Volume de Railway si se van a recibir archivos grandes. La carpeta puede
+personalizarse con `UPLOAD_DIR`.
+
+### Interfaz de botones
+
+Se añadieron botones inline para el menú principal, cambio de nube, estado,
+archivos/evidencias, cola, estadísticas, cancelación de procesos y acciones
+posteriores a una subida. Los comandos escritos siguen funcionando como antes.
