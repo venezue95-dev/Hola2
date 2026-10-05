@@ -1,9 +1,21 @@
-requests[socks]>=2.31
-beautifulsoup4>=4.12
-requests-toolbelt>=1.0
-pytz>=2024.1
-python-dotenv>=1.0
-pyrogram>=2.0,<3
-tgcrypto>=1.2
-telethon>=1.36
+requests
+requests[socks]
+python-telegram-bot
+bs4
+user_agent
+ping3
+python-nmap
+tcping
+pyping
 yt-dlp>=2026.06.09
+requests_toolbelt
+telethon
+tenacity
+pytz
+pillow
+beautifulsoup4
+
+python-dotenv
+pyrogram>=2.0,<3
+# Opcional: acelera Pyrogram, pero Railway puede funcionar sin compilarlo.
+# tgcrypto>=1.2

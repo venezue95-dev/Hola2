@@ -3742,5 +3742,8 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except:
+    except Exception:
+        print("=== PRIMER ERROR AL ARRANCAR ===", flush=True)
+        traceback.print_exc()
+        time.sleep(15)
         main()
