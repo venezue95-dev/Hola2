@@ -1173,12 +1173,12 @@ def processFile(update,bot,message,file,thread=None):
 
             mensaje_final = finishInfo + '\n' + extra_msg + '\n' + filesInfo
             try:
-                bot.sendMessage(message.chat.id, mensaje_final, parse_mode='html')
+                bot.sendMessage(message.chat.id, mensaje_final, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
             except Exception as e:
                 print(f"Error enviando mensaje de finalización (probable HTML inválido en nombre/URL): {e}")
                 try:
                     plano = re.sub('<[^<]+?>', '', mensaje_final)
-                    bot.sendMessage(message.chat.id, plano)
+                    bot.sendMessage(message.chat.id, plano, reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                 except Exception as e2:
                     print(f"Fallback de mensaje de finalización también falló: {e2}")
             
@@ -1893,20 +1893,15 @@ def onmessage(update,bot:PyrogramBotClient):
             thread.store('direct_upload_path', local_path)
             DIRECT_ACTIVE_THREADS[thread.id] = thread
 
-            # Exactamente la misma barra de progreso usada para la subida a Moodle.
-            progress_state = {'started': time.time(), 'last_time': time.time(), 'last_bytes': 0}
-            def direct_download_progress(path, current, total, *_args):
-                now = time.time()
-                elapsed_delta = max(now - progress_state['last_time'], 0.001)
-                delta = max(int(current) - progress_state['last_bytes'], 0)
-                speed = delta / elapsed_delta
-                progress_state['last_time'] = now
-                progress_state['last_bytes'] = int(current)
-                total = int(total or expected_size or 0)
-                current = int(current or 0)
+            # Reutiliza directamente el renderer de infos.py que usan las subidas a Moodle.
+            def direct_download_progress(path, current, total, speed, elapsed, _args):
                 progress_info = infos.createUploading(
-                    original_name, total, current, speed,
-                    now - progress_state['started'], tid=thread.id
+                    original_name,
+                    int(total or expected_size or 0),
+                    int(current or 0),
+                    int(speed or 0),
+                    float(elapsed or 0),
+                    tid=thread.id,
                 )
                 try:
                     bot.editMessageText(
@@ -2523,7 +2518,7 @@ def onmessage(update,bot:PyrogramBotClient):
                     else:
                         confirmation_msg += f"<b>📭 @{target_user} ya no tiene más evidencias en esta nube.</b>"
                     
-                    bot.editMessageText(message, confirmation_msg, parse_mode='html')
+                    bot.editMessageText(message, confirmation_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                 else:
                     bot.editMessageText(message, f'<b>❌ Error al conectar con la nube <code>{short_host}</code>.</b>', parse_mode='html')
             except Exception as e:
@@ -2601,7 +2596,7 @@ def onmessage(update,bot:PyrogramBotClient):
             menu_msg += f"💡 <b>Envía solo el número</b> (1 al {len(AVAILABLE_CLOUDS)})."
             
             CHANGING_CLOUD_USERS.add(username)
-            bot.editMessageText(message, menu_msg, parse_mode='html')
+            bot.editMessageText(message, menu_msg, parse_mode='html', reply_markup=cloud_keyboard())
             return
 
         if '/start' in msgText:
@@ -3513,7 +3508,7 @@ def onmessage(update,bot:PyrogramBotClient):
 
 ℹ️ <b>Aún no tienes actividad registrada.</b>
                 """
-            bot.editMessageText(message, stats_msg, parse_mode='html')
+            bot.editMessageText(message, stats_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
             return
 
         elif msgText == '/cola' or msgText == '/colas':
@@ -3535,7 +3530,7 @@ def onmessage(update,bot:PyrogramBotClient):
             else:
                 cola_msg += "✅ <b>No tienes más enlaces esperando.</b>"
 
-            bot.editMessageText(message, cola_msg, parse_mode='html')
+            bot.editMessageText(message, cola_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
             return
         
         elif '/files' == msgText:
@@ -3571,9 +3566,9 @@ def onmessage(update,bot:PyrogramBotClient):
                     for idx, item in enumerate(visible_list):
                         files_msg += f"• <b>{item['name']}</b> [ <b>{item['file_count']}</b> ]\n  /txt_{idx} | /del_{idx}\n\n"
                     files_msg += f"<b>Total:</b> <b>{len(visible_list)} evidencia(s)</b>"
-                    bot.editMessageText(message, files_msg, parse_mode='html')
+                    bot.editMessageText(message, files_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                 else:
-                    bot.editMessageText(message, '<b>📭 No hay evidencias disponibles</b>', parse_mode='html')
+                    bot.editMessageText(message, '<b>📭 No hay evidencias disponibles</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                 client.logout()
             else:
                 bot.editMessageText(message,'<b>⚠️ Error: Revise su cuenta o el servidor deshabilitado:</b> <code>'+client.path+'</code>', parse_mode='html')
@@ -3610,7 +3605,7 @@ def onmessage(update,bot:PyrogramBotClient):
                     txtname = clean_name + '.txt'
                     sendTxt(txtname, evindex['files'], update, bot, user_info=user_info)
                     client.logout()
-                    bot.editMessageText(message,'<b>📄 TXT enviado con éxito.</b>', parse_mode='html')
+                    bot.editMessageText(message,'<b>📄 TXT enviado con éxito.</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                 else:
                     bot.editMessageText(message,'<b>⚠️ Error de conexión o cuenta inválida.</b>', parse_mode='html')
             except ValueError:
@@ -3688,10 +3683,10 @@ def onmessage(update,bot:PyrogramBotClient):
                             clean_name = item['clean_name']
                             item_file_count = len(item['original']['files']) if 'files' in item['original'] else 0
                             confirmation_msg += f"• <b>{clean_name}</b> [ <b>{item_file_count}</b> ]\n  /txt_{idx} | /del_{idx}\n\n"
-                        bot.editMessageText(message, confirmation_msg, parse_mode='html')
+                        bot.editMessageText(message, confirmation_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                     else:
                         confirmation_msg += "<b>📭 No hay evidencias disponibles</b>"
-                        bot.editMessageText(message, confirmation_msg, parse_mode='html')
+                        bot.editMessageText(message, confirmation_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                 else:
                     bot.editMessageText(message,'<b>⚠️ Error al conectar con la nube.</b>', parse_mode='html')
             except ValueError:
@@ -3717,7 +3712,7 @@ def onmessage(update,bot:PyrogramBotClient):
                             user_evidences.append(ev)
                     
                     if not user_evidences:
-                        bot.editMessageText(message, '<b>📭 No hay evidencias disponibles</b>', parse_mode='html')
+                        bot.editMessageText(message, '<b>📭 No hay evidencias disponibles</b>', parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                         client.logout()
                         return
                     
@@ -3750,7 +3745,7 @@ def onmessage(update,bot:PyrogramBotClient):
                             print(f"Error al notificar eliminación masiva al grupo: {e}")
                     
                     deletion_msg = f"🗑️ <b>Eliminación masiva completada</b>\n\n• <b>Evidencias eliminadas:</b> <b>{total_evidences}</b>\n• <b>Archivos borrados:</b> <b>{total_files}</b>\n\n<b>✅ ¡Todas tus evidencias han sido eliminadas!</b>"
-                    bot.editMessageText(message, deletion_msg, parse_mode='html')
+                    bot.editMessageText(message, deletion_msg, parse_mode='html', reply_markup=main_menu_keyboard(username.lower() == ADMIN_USERNAME.lower()))
                 else:
                     bot.editMessageText(message,'<b>⚠️ Error al conectar con la cuenta.</b>', parse_mode='html')
             except Exception as ex:
@@ -3876,7 +3871,8 @@ def onmessage(update,bot:PyrogramBotClient):
 
 
 def on_callback_query(callback_query, bot: PyrogramBotClient):
-    data = str(getattr(callback_query, 'data', '') or '')
+    raw_data = getattr(callback_query, 'data', '') or ''
+    data = raw_data.decode('utf-8', errors='replace') if isinstance(raw_data, bytes) else str(raw_data)
     if not data.startswith('cmd:'):
         bot.answerCallbackQuery(callback_query)
         return

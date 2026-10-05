@@ -177,6 +177,9 @@ class PyrogramBotClient:
 
                 async def _stream_download():
                     current = 0
+                    started = asyncio.get_running_loop().time()
+                    last_report = started
+                    last_bytes = 0
                     os.makedirs(os.path.dirname(os.path.abspath(destname)), exist_ok=True)
                     with open(destname, 'wb') as output:
                         async for chunk in self.app.stream_media(message._message):
@@ -184,8 +187,21 @@ class PyrogramBotClient:
                                 raise RuntimeError('Descarga cancelada por el usuario')
                             output.write(chunk)
                             current += len(chunk)
-                            if progressfunc:
-                                await self.app.loop.run_in_executor(None, progressfunc, destname, current, expected_size, 0, 0, args)
+                            now = asyncio.get_running_loop().time()
+                            if progressfunc and (now - last_report >= 0.8 or (expected_size and current >= expected_size)):
+                                elapsed = max(now - started, 0.001)
+                                speed = int((current - last_bytes) / max(now - last_report, 0.001))
+                                await self.app.loop.run_in_executor(
+                                    None, progressfunc, destname, current, expected_size, speed, elapsed, args
+                                )
+                                last_report = now
+                                last_bytes = current
+                    if progressfunc and current and last_bytes != current:
+                        elapsed = max(asyncio.get_running_loop().time() - started, 0.001)
+                        speed = int(current / elapsed)
+                        await self.app.loop.run_in_executor(
+                            None, progressfunc, destname, current, expected_size, speed, elapsed, args
+                        )
                     return current
 
                 future = asyncio.run_coroutine_threadsafe(_stream_download(), self.app.loop)
