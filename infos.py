@@ -83,17 +83,19 @@ def createUploading(filename, totalBits, currentBits, speed, time_val, originaln
     return msg
 
 def createCompresing(filename, filesize, splitsize):
-    msg = '<b>⚙️ Preparando el archivo...</b>\n\n'
+    parts = max(1, (int(filesize) + int(splitsize) - 1) // int(splitsize))
+    msg = '<b>🗜️ Preparando las partes...</b>\n\n'
     msg += f'<b>📁 Nombre: {filename}</b>\n\n'
     msg += f'<b>📊 Tamaño total: {sizeof_fmt(filesize)}</b>\n\n'
-    msg += '<i>La transferencia se está preparando de forma segura.</i>\n'
+    msg += f'<b>📦 Tamaño de partes: {sizeof_fmt(splitsize)}</b>\n\n'
+    msg += f'<b>🔢 Cantidad de partes: {parts}</b>\n\n'
     return msg
-
 def createFinishUploading(filename, filesize, split_size, current, count, findex):
     msg = '<b>✅ ¡Proceso completado con éxito!</b>\n\n'
     msg += f'<b>📁 Nombre: {filename}</b>\n\n'
     msg += f'<b>📊 Tamaño total: {sizeof_fmt(filesize)}</b>\n\n'
-    msg += '<i>Tu archivo está listo para descargar.</i>'
+    msg += f'<b>📦 Tamaño de partes: {sizeof_fmt(split_size)}</b>\n\n'
+    msg += f'<b>🔢 Partes subidas: {current}/{count}</b>'
     return msg
 
 def createFileMsg(filename, files):

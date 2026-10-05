@@ -118,6 +118,10 @@ class PyrogramBotClient:
         except MessageNotModified:
             # El texto es idéntico al actual (pasa en las barras de progreso).
             return None
+        except Exception as exc:
+            # La edición es solo visual; no debe abortar una descarga o subida.
+            print(f"Aviso Pyrogram editMessageText: {exc}")
+            return None
 
     def deleteMessage(self, chat_id, msg_id):
         return self.app.delete_messages(chat_id, msg_id)

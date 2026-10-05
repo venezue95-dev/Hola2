@@ -683,14 +683,20 @@ def downloadFile(downloader,filename,currentBits,totalBits,speed,time,args):
         message = args[1]
         thread = args[2]
         username = args[3] if len(args) > 3 else "Desconocido"
-        if thread.getStore('stop'):
+        if thread and thread.getStore('stop'):
             downloader.stop()
             raise StopUploadException("Tarea detenida por mantenimiento o cancelación")
-        
-        update_process(thread.id, username, filename, '📥 Descargando', currentBits, totalBits)
-        
-        downloadingInfo = infos.createDownloading(filename,totalBits,currentBits,speed,time,tid=thread.id)
-        bot.editMessageText(message, downloadingInfo, parse_mode='html')
+        if thread:
+            update_process(thread.id, username, filename, '📥 Descargando', currentBits, totalBits)
+        downloadingInfo = infos.createDownloading(
+            filename, totalBits, currentBits, speed, time,
+            tid=thread.id if thread else ''
+        )
+        # La edición es solo visual: nunca debe cancelar una descarga válida.
+        try:
+            bot.editMessageText(message, downloadingInfo, parse_mode='html')
+        except Exception as ex:
+            print(f"Aviso: no se pudo actualizar el progreso de descarga: {ex}")
     except StopUploadException:
         raise
     except Exception as ex: 
@@ -707,11 +713,15 @@ def uploadFile(filename,currentBits,totalBits,speed,time,args):
         if thread and thread.getStore('stop'):
             raise StopUploadException("Tarea detenida por mantenimiento o cancelación")
         
-        update_process(thread.id, username, filename, '📤 Subiendo', currentBits, totalBits)
+        if thread:
+            update_process(thread.id, username, filename, '📤 Subiendo', currentBits, totalBits)
         
         tid_str = thread.id if thread else ''
         uploadingInfo = infos.createUploading(filename, totalBits, currentBits, speed, time, originalfile, tid=tid_str)
-        bot.editMessageText(message, uploadingInfo, parse_mode='html')
+        try:
+            bot.editMessageText(message, uploadingInfo, parse_mode='html')
+        except Exception as ex:
+            print(f"Aviso: no se pudo actualizar el progreso de subida: {ex}")
     except StopUploadException:
         raise
     except Exception as ex: 
