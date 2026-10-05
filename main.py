@@ -1895,7 +1895,7 @@ def onmessage(update,bot:PyrogramBotClient):
 
             # Reutiliza directamente el renderer de infos.py que usan las subidas a Moodle.
             def direct_download_progress(path, current, total, speed, elapsed, _args):
-                progress_info = infos.createUploading(
+                progress_info = infos.createDownloading(
                     original_name,
                     int(total or expected_size or 0),
                     int(current or 0),
